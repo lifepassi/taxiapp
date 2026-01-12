@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>택시 기사 앱</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
+  background: #f2f4f6;
+  font-size: 19px;
+}
+h1 {
+  text-align: center;
+  font-size: 28px;
+  margin-bottom: 16px;
+}
+.card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+input, button {
+  width: 100%;
+  padding: 14px;
+  margin-top: 10px;
+  font-size: 19px;
+  border-radius: 12px;
+  border: 1px solid #ccc;
+}
+button {
+  background: #007aff;
+  color: #fff;
+  border: none;
+  font-weight: bold;
+}
+.row {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+  font-size: 21px;
+}
+.list div {
+  padding: 10px 0;
+  border-bottom: 1px solid #eee;
+}
+canvas {
+  max-width: 100%;
+}
+</style>
+</head>
+
+<body>
+
+<h1>🚕 택시 기사 앱</h1>
+
+<div class="card">
+  <input id="empId" placeholder="사번 입력">
+  <button onclick="loadData()">불러오기</button>
+</div>
+
+<div class="card">
+  <h3>📊 누적 합계</h3>
+  <div class="row"><span>수익</span><strong id="sumIncome">0</strong></div>
+  <div class="row"><span>거리</span><strong id="sumDistance">0</strong></div>
+  <div class="row"><span>LPG</span><strong id="sumLpg">0</strong></div>
+  <div class="row"><span>하루 평균 수익</span><strong id="avgIncome">0</strong></div>
+</div>
+
+<div class="card">
+  <h3>➕ 오늘 기록</h3>
+  <input type="number" id="income" placeholder="수익">
+  <input type="number" id="distance" placeholder="거리">
+  <input type="number" id="lpg" placeholder="LPG">
+  <button onclick="saveData()">저장</button>
+</div>
+
+<div class="card">
+  <h3>📅 날짜별 기록</h3>
+  <input type="date" id="datePick">
+  <div class="list" id="dailyList"></div>
+</div>
+
+<div class="card">
+  <h3>📆 월별 합계</h3>
+  <input type="month" id="monthPick">
+  <div class="row"><span>수익</span><strong id="monthIncome">0</strong></div>
+  <div class="row"><span>거리</span><strong id="monthDistance">0</strong></div>
+  <div class="row"><span>LPG</span><strong id="monthLpg">0</strong></div>
+</div>
+
+<div class="card">
+  <h3>📈 월별 수익 그래프</h3>
+  <canvas id="chart"></canvas>
+</div>
+
+<script>
+const API_URL = "https://script.google.com/macros/s/AKfycbysFKS12TwPrCnkuSgIouihAwpl7R0b05P5i_H0zEkzssuCl2DGYWl_cTgZFpcz_mTT/exec";
+let empId = localStorage.getItem("empId") || "";
+let allData = [];
+let chart;
+
+document.getElementById("empId").value = empId;
+
+function loadData() {
+  empId = document.getElementById("empId").value.trim();
+  if (!empId) return alert("사번 입력하세요");
+  localStorage.setItem("empId", empId);
+
+  fetch(`${API_URL}?empId=${empId}`)
+    .then(r => r.json())
+    .then(d => {
+      allData = d;
+      calcTotal();
+      drawChart();
+      alert("불러오기 완료");
+    });
+}
+
+function calcTotal() {
+  let i=0,d=0,l=0;
+  const days = new Set();
+
+  allData.forEach(r=>{
+    i+=Number(r.income);
+    d+=Number(r.distance);
+    l+=Number(r.lpg);
+    days.add(r.date);
+  });
+
+  sumIncome.innerText = i;
+  sumDistance.innerText = d;
+  sumLpg.innerText = l;
+  avgIncome.innerText = days.size ? Math.round(i/days.size) : 0;
+}
+
+function saveData() {
+  fetch(API_URL, {
+    method: "POST",
+    body: JSON.stringify({
+      empId,
+      income: income.value,
+      distance: distance.value,
+      lpg: lpg.value
+    })
+  }).then(()=>{
+    income.value = distance.value = lpg.value = "";
+    loadData();
+  });
+}
+
+datePick.onchange = e => {
+  dailyList.innerHTML = "";
+  allData.filter(r=>r.date===e.target.value).forEach(r=>{
+    dailyList.innerHTML += `<div>
+      수익 ${r.income} / 거리 ${r.distance} / LPG ${r.lpg}
+    </div>`;
+  });
+};
+
+monthPick.onchange = e => {
+  let i=0,d=0,l=0;
+  allData.filter(r=>r.date.startsWith(e.target.value)).forEach(r=>{
+    i+=+r.income; d+=+r.distance; l+=+r.lpg;
+  });
+  monthIncome.innerText = i;
+  monthDistance.innerText = d;
+  monthLpg.innerText = l;
+};
+
+function drawChart() {
+  const map = {};
+  allData.forEach(r=>{
+    const m = r.date.slice(0,7);
+    map[m] = (map[m]||0) + Number(r.income);
+  });
+
+  const labels = Object.keys(map).sort();
+  const data = labels.map(l=>map[l]);
+
+  if (chart) chart.destroy();
+  chart = new Chart(document.getElementById("chart"), {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{ label: "월 수익", data }]
+    }
+  });
+}
+</script>
+
+</body>
+</html>
