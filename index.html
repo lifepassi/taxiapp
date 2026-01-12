@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>택시 기사 앱</title>
+
+<style>
+body {
+  margin: 0;
+  padding: 14px;
+  background: #f2f4f6;
+  font-family: -apple-system, BlinkMacSystemFont, system-ui;
+}
+
+h1 {
+  text-align: center;
+  font-size: 28px;
+  margin-bottom: 16px;
+}
+
+.card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 14px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.08);
+}
+
+h2 {
+  font-size: 22px;
+  margin-bottom: 12px;
+}
+
+input, button, select {
+  width: 100%;
+  padding: 16px;
+  font-size: 20px;
+  border-radius: 12px;
+  border: 1px solid #ccc;
+  margin-bottom: 10px;
+}
+
+button {
+  background: #007aff;
+  color: #fff;
+  border: none;
+}
+
+.stat {
+  display: flex;
+  justify-content: space-between;
+  font-size: 20px;
+  margin: 6px 0;
+}
+
+.notice {
+  text-align: center;
+  font-size: 16px;
+  color: #888;
+}
+
+.toggle {
+  display: flex;
+  gap: 8px;
+}
+.toggle button {
+  flex: 1;
+  background: #e5e7eb;
+  color: #000;
+}
+.toggle button.active {
+  background: #007aff;
+  color: #fff;
+}
+</style>
+</head>
+
+<body>
+
+<h1>🚕 택시 기사 앱</h1>
+
+<div class="card">
+  <h2>사번</h2>
+  <input id="empId" placeholder="사번 입력"/>
+</div>
+
+<div class="card">
+  <h2>오늘 기록</h2>
+  <input id="income" placeholder="수익"/>
+  <input id="distance" placeholder="거리"/>
+  <input id="lpg" placeholder="LPG"/>
+  <button onclick="save()">저장</button>
+</div>
+
+<div class="card">
+  <h2>📊 누적 합계</h2>
+  <div class="stat"><span>수익</span><span id="totalIncome">0</span></div>
+  <div class="stat"><span>거리</span><span id="totalDistance">0</span></div>
+  <div class="stat"><span>LPG</span><span id="totalLpg">0</span></div>
+</div>
+
+<div class="card">
+  <h2>📅 날짜별 합계</h2>
+  <input type="date" id="datePick" onchange="filterByDate()"/>
+  <div id="dateResult" class="notice">날짜를 선택하세요</div>
+</div>
+
+<div class="card">
+  <h2>🗓 월별 합계</h2>
+  <input type="month" id="monthPick" onchange="filterByMonth()"/>
+  <div id="monthResult" class="notice">월을 선택하세요</div>
+</div>
+
+<div class="card">
+  <h2>📈 월별 그래프</h2>
+  <div class="toggle">
+    <button onclick="setGraph('income')" class="active">수익</button>
+    <button onclick="setGraph('distance')">거리</button>
+    <button onclick="setGraph('lpg')">LPG</button>
+  </div>
+  <canvas id="chart"></canvas>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+const API_URL = "https://script.google.com/macros/s/AKfycbxOu_8_QYF2B-H3op2kX89jz1KzdkNmqr1WuGsIHdi9vShzUYbcTq_p_KMZI_r5RnPY/exec";
+let allData = [];
+let currentGraph = "income";
+let chart;
+
+async function loadData() {
+  const empId = document.getElementById("empId").value;
+  if (!empId) return;
+
+  const res = await fetch(API_URL + "?empId=" + empId);
+  allData = await res.json();
+  calcTotal();
+  drawChart();
+}
+
+async function save() {
+  const empId = document.getElementById("empId").value;
+  if (!empId) return alert("사번 입력");
+
+  await fetch(API_URL, {
+    method: "POST",
+    body: JSON.stringify({
+      empId,
+      income: income.value || 0,
+      distance: distance.value || 0,
+      lpg: lpg.value || 0,
+      date: new Date().toISOString()
+    })
+  });
+
+  income.value = distance.value = lpg.value = "";
+  loadData();
+}
+
+function calcTotal() {
+  let i=0,d=0,l=0;
+  allData.forEach(r=>{
+    i+=r.income; d+=r.distance; l+=r.lpg;
+  });
+  totalIncome.innerText=i;
+  totalDistance.innerText=d;
+  totalLpg.innerText=l;
+}
+
+function filterByDate() {
+  const date = datePick.value;
+  const rows = allData.filter(r=>r.date===date);
+  if(!rows.length) return dateResult.innerText="기록 없음";
+  let i=0,d=0,l=0;
+  rows.forEach(r=>{i+=r.income;d+=r.distance;l+=r.lpg});
+  dateResult.innerText=`수익 ${i} / 거리 ${d} / LPG ${l}`;
+}
+
+function filterByMonth() {
+  const m = monthPick.value;
+  const rows = allData.filter(r=>r.date.startsWith(m));
+  if(!rows.length) return monthResult.innerText="기록 없음";
+  let i=0,d=0,l=0;
+  rows.forEach(r=>{i+=r.income;d+=r.distance;l+=r.lpg});
+  monthResult.innerText=`수익 ${i} / 거리 ${d} / LPG ${l}`;
+}
+
+function setGraph(t){
+  currentGraph=t;
+  document.querySelectorAll(".toggle button").forEach(b=>b.classList.remove("active"));
+  event.target.classList.add("active");
+  drawChart();
+}
+
+function drawChart(){
+  const map={};
+  allData.forEach(r=>{
+    const m=r.date.slice(0,7);
+    map[m]=(map[m]||0)+r[currentGraph];
+  });
+
+  if(chart) chart.destroy();
+  chart=new Chart(document.getElementById("chart"),{
+    type:"bar",
+    data:{
+      labels:Object.keys(map),
+      datasets:[{data:Object.values(map)}]
+    }
+  });
+}
+</script>
+
+</body>
+</html>
