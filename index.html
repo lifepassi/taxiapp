@@ -6,6 +6,21 @@
 <title>택시 기사 앱</title>
 
 <style>
+  /* 전체 박스 크기 계산 문제 해결 */
+* {
+  box-sizing: border-box;
+}
+
+/* 카드, 입력칸 화면 넘침 방지 */
+.container,
+.card,
+input,
+select,
+button {
+  width: 100%;
+  max-width: 100%;
+}
+
 body {
   margin: 0;
   padding: 14px;
@@ -214,3 +229,4 @@ function drawChart(){
 
 </body>
 </html>
+
